@@ -1,0 +1,79 @@
+import { ArticleLayout } from '@/components/ArticleLayout'
+import archToken from './solana-token.png'
+
+export const article = {
+  author: 'X.GAN',
+  date: '2024-04-04',
+  title: 'Web 3.0 学习笔记 1 - Solnana上Token的原理',
+  description:
+    'Most companies try to stay ahead of the curve when it comes to visual design, but for Planetaria we needed to create a brand that would still inspire us 100 years from now when humanity has spread across our entire solar system.',
+}
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+}
+
+export default (props) => <ArticleLayout article={article} {...props} />
+
+在Solana上，因为其架构的原因，Token的原理与其他区块链平台有所不同，其逻辑和状态在不同的账户中(the logic and state are stored in separate accounts)。
+
+这使得Solana能够用单一的 **程序账户（SPL Token Program）** 来管理所有Token，不同于Ethereum，后者要求每个Token都创建并部署一个新的[ERC-20合约](#)。
+
+在Solana上，用SPL Token Program来创建Token，另外需要Metaplex的Token Metadata Program来创建 **数据账户(Metadata accounts)** ，用于存储Token的详细信息和元数据(metadata)。
+每个 **Token账户(Token Accounts)** 都存储如余额等数据，且由SPL Token Program管理。
+
+<Image src={archToken} alt="" />
+
+## Token的创建过程
+
+无论是哪种Token，首先创建的是 **铸币账户（Mint Account）** ，它保存关于Token的基本信息，如供应量(supply)、小数位数(decimals)、授权(authority)等，这是Token的基本身份账户。
+
+然而，铸币账户并不保存Token的元信息。因此，会使用Token Metadata Program创建另一个称为 **元数据账户（Metadata Account）** 的账户，其中包含有关代币的附加信息，如名称(name)、符号(symbol)、标志(logo)等。
+创建元数据账户是可选的，Token可以不带元数据账户运行。
+
+铸币账户创建后，Token的授权方可以铸造供应量。为了持有新创建的Token，需要另一种类型的账户，即 **Token账户（Token Account）** 。假设授权方向张三的地址铸造了100单位的Token X，那么张三需要一个Token账户来持有这些单位。
+
+每个Token持有者都需要一个Token账户。如果说Token X有100个持有者，这意味着存在100个不同的带有活跃余额的Token账户。同样，如果说张三持有50种不同的Token，则他需要有50个不同的带有活跃余额的Token账户。
+
+这里的“活跃”意思是Token账户的余额大于零。Token账户即使余额为零也会保留在链上，除非Token账户的所有者决定关闭它。
+
+最后需要简要提及的账户是 **关联Token账户（associated token account）** ，这是映射到用户地址的Token账户。它由Associated Token Program管理，其主要优势是当Token转移到没有该Token账户的用户时，会自动创建。
+
+Aere repetiti cognataque natus. Habebat vela solutis saepe munus nondum adhuc
+oscula nomina pignora corpus deserat.
+
+## 用umi库创建spl Token
+
+用 Typescript 和 UMI – A Solana Framework for JavaScript 创建Token示例。
+
+直接将“userKeypair”与“keypairIdentity”接口一起使用将导致错误。这是因为 umi 的公钥接口的定义与 @solana/web3.js 使用的接口不同。
+因此，需要将密钥对包裹在 umi 的 eddsa 接口上
+
+```c
+import { mplTokenMetadata } from "@metaplex-foundation/mpl-token-metadata";
+import { keypairIdentity } from "@metaplex-foundation/umi";
+import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
+import { userKeypair } from "./helpers";
+
+const umi = createUmi('https://api.devnet.solana.com');
+
+const keypair = umi.eddsa.createKeypairFromSecretKey(userKeypair.secretKey);
+
+umi.use(keypairIdentity(keypair))
+    .use(mplTokenMetadata())
+```
+
+umi 提供了直接创建Token的函数。使用 createFungible 方法
+
+```c
+createFungible(umi, {
+    mint,
+    authority: umi.identity,
+    name: metadata.name,
+    symbol: metadata.symbol,
+    uri: metadata.uri,
+    sellerFeeBasisPoints: percentAmount(0),
+    decimals: 9,
+}).sendAndConfirm(umi);
+```
